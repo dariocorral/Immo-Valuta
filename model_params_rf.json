@@ -1,0 +1,7 @@
+{
+  "bootstrap": true,
+  "max_depth": 12,
+  "oob_score": true,
+  "max_features": 0.33,
+  "n_estimators": 2500
+}
