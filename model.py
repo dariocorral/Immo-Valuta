@@ -12,6 +12,8 @@ from utils import Utils
 #Ignore Warnings Console Messages
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning
+)
 
 import pandas as pd
 pd.options.mode.chained_assignment = None
@@ -76,29 +78,18 @@ class Model():
        
        df = self.dataset_preprocessed
        
-       
-       #Cat 20m2
-       """df['priceByArea'] = (
-          df['priceByArea'].apply(lambda x: int(math.floor(x / 100.0) * 100.0))
-          )
-       """
-       """
-       #Drop columns
-       df.drop(['parkingSpacePrice','avgPriceZone','hasAirConditioning',
-        'hasBoxRoom', 'hasTerrace', 'hasGarden','price',
-        'hasParkingSpace', 'parkingSpacePrice', 'statusInt','propertyTypeInt',
-        'rooms','bathrooms','floor','hasLift'
-                                ],axis= 1,
-                inplace = True)
-       """
-       
+              
        #Bins
-       bins_list = np.arange(300,3600,100).tolist()
-       bins_list.append(0)
-       bins_list.append(int(math.ceil(df['priceByArea'].max() / 100.0) * 100.0))
-       bins_list.sort()
+       #bins_list = np.arange(300,3600,100).tolist()
+       bins_list = np.arange(25000,4500000,25000).tolist()
 
-       df["priceByAreaBins"] = pd.cut(df['priceByArea'],bins_list,labels = False)
+       #bins_list.append(0)
+       #bins_list.append(int(math.ceil(df['priceByArea'].max() / 100.0) * 100.0))
+       #bins_list.sort()
+
+       #df["priceByAreaBins"] = pd.cut(df['priceByArea'],bins_list,labels = False)
+       df["priceBins"] = pd.cut(df['price'],bins_list,labels = False)
+
        
        #Property Type Union
        df['propertyType'] = np.where((df['propertyType']=='studio') |
@@ -106,7 +97,7 @@ class Model():
                                      'flat',df['propertyType'])
        
        #Select Features
-       df = df[['priceByAreaBins','size','propertyType','district', 
+       df = df[['price','size','propertyType', 'district',
                             'status',
                 'roomsCat','bathroomsCat','box_posto_auto','hasTerrace',
                 'hasGarden','hasSwimmingPool']]
@@ -122,7 +113,7 @@ class Model():
 
         """
         df = self.get_prepared_df()
-        labels = np.array(df['priceByAreaBins'])
+        labels = np.array(df['price'])
         
         return labels
 
@@ -135,7 +126,7 @@ class Model():
 
         """
         df = self.get_prepared_df()
-        features= df.drop('priceByAreaBins', axis = 1)
+        features= df.drop('price', axis = 1)
         features = np.array(features) 
         
         return features
@@ -149,7 +140,7 @@ class Model():
 
         """
         df = self.get_prepared_df()
-        features= df.drop('priceByAreaBins', axis = 1)
+        features= df.drop('price', axis = 1)
         # Saving feature names for later use
         feature_list = list(features.columns)
         
@@ -174,7 +165,7 @@ class Model():
 
         """    
         df = self.get_prepared_df()
-        df.drop('priceByAreaBins',axis = 1,inplace = True)
+        df.drop('price',axis = 1,inplace = True)
         categorical_features_indices = np.where(
             (df.dtypes != np.int)&(df.dtypes != np.float))[0]
         
@@ -199,6 +190,7 @@ class Model():
         #Process Time
         start = time.time()
         
+        #Datasets
         features = self.features_dataset
         labels = self.labels_dataset
                 
@@ -212,59 +204,62 @@ class Model():
         
         #Get max n_trees
         max_n_trees = self.depth_of_trees.max()[0]
-        max_depth_list = np.arange(int(max_n_trees)-5,
+        max_depth_list = np.arange(int(max_n_trees/3),
                                    max_n_trees,
                                    1).tolist()
         max_depth_list.append(None)
         
         #Min Sample leaf
-        min_samples_leaf_list = np.arange(0.01,0.36,0.10).tolist()
+        min_samples_leaf_list = np.arange(0.01,0.36,0.01).tolist()
         min_samples_leaf_list = [ round(elem, 2) for elem in min_samples_leaf_list ]
-
+        min_samples_leaf_list.append(None)
         
+        
+        ccp_list = np.arange(0.001,0.036,0.001).tolist()
+        ccp_list = [ round(elem, 5) for elem in ccp_list ]
+
+        ccp_list = [0.001]
         #min_samples_leaf_list.append(None)
         
         param_grid = {#"max_features":max_features_list,
                       #"max_depth":max_depth_list,
-                      "min_samples_leaf":min_samples_leaf_list}
+                      "min_impurity_decrease":min_samples_leaf_list}
         
         #RF Model to test
         rf = RandomForestRegressor(
                           bootstrap = True,
                           oob_score = True,
                           n_estimators = n_trees,
+                          max_depth=9,
                           max_features = 0.33,
-                          random_state=None)
+                          random_state=7)
         
         #Encoder
         encoder = ce.GLMMEncoder(cols=self.cat_index)
         
-        #kfold_cv = KFold(n_splits=5, shuffle=True, random_state=7)
 
         #Encoder Cv
         cv_encoder = NestedCVWrapper(
-            feature_encoder=encoder,
-            #cv=5#,shuffle=True
-            )
-
-        #Define and execute pipe        
-        pipe = Pipeline(steps=[ 
-                        ('catEncoder', cv_encoder),
-                       ('grid', GridSearchCV(rf,param_grid,verbose = 3))
-                           ])
-                        
-        pipe.fit(features,labels)
+            feature_encoder= encoder,
+            cv=5,shuffle=True,random_state=7)
         
-        df_results = pd.DataFrame(pipe['grid'].cv_results_)
+        
+        #Apply Transform to all datasets
+        feat_tsf = cv_encoder.fit_transform(features,labels)
+        
+        
+        #Define and execute pipe        
+        grid_cv= GridSearchCV(rf,param_grid,verbose = 3)
+                        
+        grid_cv.fit(feat_tsf,labels)
+        
+        df_results = pd.DataFrame(grid_cv.cv_results_)
         
         #Save CV Results
         if saveStats:
             
             df_results.to_csv('data/cv_hyperparams_model.csv')
                 
-        best_max_features = (
-            df_results.loc[
-                df_results['rank_test_score']==1]['param_max_features'].values[0])
         
         best_max_depth = (
             df_results.loc[
@@ -273,8 +268,8 @@ class Model():
         model_params = {
             "bootstrap":True,
              "max_depth" : best_max_depth,
+             "max_features":0.33,
              "oob_score": True,
-             "max_features": best_max_features,
              "n_estimators" : n_trees
             }
         
@@ -348,7 +343,7 @@ class Model():
 
         """
         
-        return self.model_fit.oob_score_
+        return self.model_fit['rf'].oob_score_
     
     #@st.cache
     def fit_predict(self,
@@ -410,6 +405,9 @@ class Model():
             bathroomsCat = 2
         else:
             bathroomsCat = bathrooms
+            
+        #Avg Price Zone
+        #avgPriceZone = self.avg_price_district(district)
 
         array = np.array([
             size,
@@ -431,7 +429,7 @@ class Model():
         #Encoder CV KFold
         cv_encoder = NestedCVWrapper(
             encoder,
-            cv=5,shuffle=True, random_state=None)
+            cv=5,shuffle=True, random_state=7)
         
         #Datasets
         features = self.features_dataset
@@ -470,9 +468,49 @@ class Model():
         Graph Permutation Importance
         """
         
+        file = 'model_params_rf.json'
+        
+        # Opening JSON file 
+        with open(file, 'r') as openfile: 
+      
+        # Reading from json file 
+            best_model_params = json.load(openfile) 
+        
+        #Datasets
+        features = self.features_dataset
+        labels = self.labels_dataset
+        
+        #Encoder    
+        encoder = ce.GLMMEncoder(cols=self.cat_index)
+        
+        #Encoder CV KFold
+        cv_encoder = NestedCVWrapper(
+            encoder,
+            cv=5,shuffle=True, random_state=None)
+        
+        #Datasets
+        features = self.features_dataset
+        labels = self.labels_dataset
+        
+        #Apply Transform to all datasets
+        feat_tsf = cv_encoder.fit_transform(features,labels)
+
+        #Encoder Cv
+        cv_encoder = NestedCVWrapper(
+            feature_encoder= encoder,
+            cv=5,shuffle=True)
+        
+        #RF Regressor
+        rf = RandomForestRegressor(
+                          **best_model_params,
+                          random_state = 7
+                          )
+        #Fit
+        rf.fit(feat_tsf,labels)
+
         #Permutation importance
-        result = permutation_importance(self.model_fit['rf'], 
-                                        self.features_dataset,
+        result = permutation_importance(rf, 
+                                        feat_tsf,
                                         self.labels_dataset, 
                                         n_repeats=10,
                                 random_state=7, n_jobs=2)
@@ -538,10 +576,18 @@ class Model():
         Dataframe with Trees depth
 
         """
+        
+        file = 'model_params_rf.json'
+        
+        # Opening JSON file 
+        with open(file, 'r') as openfile: 
+      
+        # Reading from json file 
+            best_model_params = json.load(openfile) 
+
         #Rf without depth limit
-        rf = RandomForestRegressor(n_estimators=1000,
-                          max_depth = None,
-                          random_state = 7)
+        rf = RandomForestRegressor(**best_model_params
+                          )
         
         #Encoder for categorical columns
         encoder = ce.GLMMEncoder(cols=self.cat_index)
@@ -564,27 +610,40 @@ class Model():
        
         return  pd.DataFrame(max_depth_list,columns=['trees'])
     
-    def pred_ints(model, features_array, percentile=95):
-        
-        err_down = []
-        err_up = []
-        for x in range(len(features_array)):
-            preds = []
-            for pred in model.estimators_:
-                preds.append(pred.predict(features_array[x])[0])
-            err_down.append(np.percentile(preds, (100 - percentile) / 2. ))
-            err_up.append(np.percentile(preds, 100 - (100 - percentile) / 2.))
-        
-        return err_down, err_up
-    
     def train_test_samples(self, features, labels, test_size=0.20,
                            random_state=None):
         
         features  = self.features_dataset
         labels = self.labels_dataset
         
+        #Encoder    
+        encoder = ce.GLMMEncoder(cols=self.cat_index)
+        
+        #Encoder CV KFold
+        cv_encoder = NestedCVWrapper(
+            encoder,
+            cv=5,shuffle=True, random_state=7)
+        
+        #Datasets
+        features = self.features_dataset
+        labels = self.labels_dataset
+        
+        #Apply Transform to all datasets
+        feat_tsf = cv_encoder.fit_transform(features,labels)
+        
         X_train, X_test, y_train, y_test = train_test_split(
-            features,labels, test_size = test_size, random_state = random_state)
+            feat_tsf,labels, test_size = test_size, random_state = random_state)
         
         return X_train, X_test, y_train, y_test
+    
+    def avg_price_district(self,district):
+        
+        df = self.dataset_preprocessed
+        
+        df = df.groupby('district').mean()['priceByArea']
+        
+        return int(df.loc[df.index==district].values[0])
+        
+    
+        
 
