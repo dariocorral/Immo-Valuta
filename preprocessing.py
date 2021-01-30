@@ -13,6 +13,7 @@ from utils import Utils
 
 
 
+
 class Preprocessing(object):
     
     """
@@ -56,7 +57,7 @@ class Preprocessing(object):
         
         #Select Column important
         df = df[['price','propertyType','size','floor','rooms','bathrooms',
-                 'district','status','hasLift','hasAirConditioning', 
+                 'district','latitude','longitude','status','hasLift','hasAirConditioning', 
                  'hasBoxRoom', 'hasTerrace','hasGarden', 'hasSwimmingPool', 
                  'hasParkingSpace','isParkingSpaceIncludedInPrice', 
                  'parkingSpacePrice']]
@@ -104,21 +105,23 @@ class Preprocessing(object):
                                 'good',
                                     df['status']
                                 ))
-        """
+        
         #Add renew Ligth
         df['status'] = np.where( 
                     (df['priceByArea'] < df['avgPriceZone'])&
                     (df['status']=='good'),
                     'renew', df['status']
                         )
-        """
+        
+        
         #Status as category
         df.status = df.status.astype('category')
 
         
         df = df[['price', 'propertyType', 'size','priceByArea',  'floor', 'rooms',
-                 'bathrooms','district', 'avgPriceZone','status', 'hasLift',
-                 'hasAirConditioning', 'hasBoxRoom','hasTerrace', 'hasGarden',
+                 'bathrooms','district', 'latitude','longitude','avgPriceZone',
+                 'status', 'hasLift','hasAirConditioning', 'hasBoxRoom',
+                 'hasTerrace', 'hasGarden',
                  'hasSwimmingPool','hasParkingSpace','parkingSpacePrice'
                  ]]
         

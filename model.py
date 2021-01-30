@@ -14,19 +14,19 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import pandas as pd
+pd.options.mode.chained_assignment = None
+
 import numpy as np
-import streamlit as st
+#import streamlit as st
 import json
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split,GridSearchCV,KFold
+from sklearn.model_selection import GridSearchCV,train_test_split
 from sklearn.inspection import permutation_importance
 from sklearn.pipeline import Pipeline
 from sklearn import tree
 import category_encoders as ce
 from category_encoders.wrapper import NestedCVWrapper
 import matplotlib.pyplot as plt
-import seaborn as sns
-sns.set()
 import time
 import math
 
@@ -77,26 +77,39 @@ class Model():
        df = self.dataset_preprocessed
        
        
-       #Cat 25m2
-       
-       df['size'] = (
-          df['size'].apply(lambda x: int(math.floor(x / 10.0) * 10.0))
+       #Cat 20m2
+       """df['priceByArea'] = (
+          df['priceByArea'].apply(lambda x: int(math.floor(x / 100.0) * 100.0))
           )
-       
-       
+       """
+       """
        #Drop columns
        df.drop(['parkingSpacePrice','avgPriceZone','hasAirConditioning',
-        'hasBoxRoom', 'hasTerrace', 'hasGarden','priceByArea',
+        'hasBoxRoom', 'hasTerrace', 'hasGarden','price',
         'hasParkingSpace', 'parkingSpacePrice', 'statusInt','propertyTypeInt',
         'rooms','bathrooms','floor','hasLift'
                                 ],axis= 1,
                 inplace = True)
+       """
        
-       #Sorted
-       df = df[['price', 'propertyType', 'size', 'district', 'status', 
-                'roomsCat','bathroomsCat','floorCat','box_posto_auto',
-                'garden_terrace','liftCat','hasSwimmingPool'
-        ]]
+       #Bins
+       bins_list = np.arange(300,3600,100).tolist()
+       bins_list.append(0)
+       bins_list.append(int(math.ceil(df['priceByArea'].max() / 100.0) * 100.0))
+       bins_list.sort()
+
+       df["priceByAreaBins"] = pd.cut(df['priceByArea'],bins_list,labels = False)
+       
+       #Property Type Union
+       df['propertyType'] = np.where((df['propertyType']=='studio') |
+                                     (df['propertyType']=='duplex'),
+                                     'flat',df['propertyType'])
+       
+       #Select Features
+       df = df[['priceByAreaBins','size','propertyType','district', 
+                            'status',
+                'roomsCat','bathroomsCat','box_posto_auto','hasTerrace',
+                'hasGarden','hasSwimmingPool']]
        
        return df
     
@@ -109,7 +122,7 @@ class Model():
 
         """
         df = self.get_prepared_df()
-        labels = np.array(df['price'])
+        labels = np.array(df['priceByAreaBins'])
         
         return labels
 
@@ -122,7 +135,7 @@ class Model():
 
         """
         df = self.get_prepared_df()
-        features= df.drop('price', axis = 1)
+        features= df.drop('priceByAreaBins', axis = 1)
         features = np.array(features) 
         
         return features
@@ -136,7 +149,7 @@ class Model():
 
         """
         df = self.get_prepared_df()
-        features= df.drop('price', axis = 1)
+        features= df.drop('priceByAreaBins', axis = 1)
         # Saving feature names for later use
         feature_list = list(features.columns)
         
@@ -161,7 +174,7 @@ class Model():
 
         """    
         df = self.get_prepared_df()
-        df.drop('price',axis = 1,inplace = True)
+        df.drop('priceByAreaBins',axis = 1,inplace = True)
         categorical_features_indices = np.where(
             (df.dtypes != np.int)&(df.dtypes != np.float))[0]
         
@@ -199,28 +212,39 @@ class Model():
         
         #Get max n_trees
         max_n_trees = self.depth_of_trees.max()[0]
-        max_depth_list = np.arange(int(max_n_trees/2),
+        max_depth_list = np.arange(int(max_n_trees)-5,
                                    max_n_trees,
-                                   3).tolist()
+                                   1).tolist()
         max_depth_list.append(None)
         
-        param_grid = {"max_features":max_features_list,
-                      "max_depth":max_depth_list}
+        #Min Sample leaf
+        min_samples_leaf_list = np.arange(0.01,0.36,0.10).tolist()
+        min_samples_leaf_list = [ round(elem, 2) for elem in min_samples_leaf_list ]
+
+        
+        #min_samples_leaf_list.append(None)
+        
+        param_grid = {#"max_features":max_features_list,
+                      #"max_depth":max_depth_list,
+                      "min_samples_leaf":min_samples_leaf_list}
         
         #RF Model to test
         rf = RandomForestRegressor(
                           bootstrap = True,
                           oob_score = True,
                           n_estimators = n_trees,
-                          random_state=7)
+                          max_features = 0.33,
+                          random_state=None)
         
         #Encoder
         encoder = ce.GLMMEncoder(cols=self.cat_index)
+        
+        #kfold_cv = KFold(n_splits=5, shuffle=True, random_state=7)
 
         #Encoder Cv
         cv_encoder = NestedCVWrapper(
-            encoder,
-            cv=KFold(n_splits=5, shuffle=True, random_state=7)
+            feature_encoder=encoder,
+            #cv=5#,shuffle=True
             )
 
         #Define and execute pipe        
@@ -286,24 +310,26 @@ class Model():
         
         #Encoder    
         encoder = ce.GLMMEncoder(cols=self.cat_index)
-        
+                
         #Encoder Cv
         cv_encoder = NestedCVWrapper(
-            encoder,
-            cv=KFold(n_splits=5, shuffle=True,random_state=7))
+            feature_encoder= encoder,
+            cv=5,shuffle=True)
         
         #Datasets
         features = self.features_dataset
         labels = self.labels_dataset
-
+        
         #Shuffle & apply cat encoder
         pipe = Pipeline(steps=[ 
                 ('catEncoder', cv_encoder),
                 ('rf',RandomForestRegressor(
                           **best_model_params,
-                          random_state = 7))
+                          random_state = 7
+                          ))
                 ])
-                
+
+        
         #Fit & Metrics
         pipe.fit(features,labels)
         
@@ -325,7 +351,7 @@ class Model():
         return self.model_fit.oob_score_
     
     #@st.cache
-    def predict(self,
+    def fit_predict(self,
             size,
             propertyType,
             district,
@@ -333,25 +359,21 @@ class Model():
             rooms, 
             bathrooms,
             box_posto_auto,
-            garden_terrace,
-            floor,
-            lift,
-            swimming_pool
+            hasGarden,
+            hasTerrace,
+            hasSwimmingPool
             ):
         """
         
         Parameters
         ----------
-        propertyType : str (category)
-        size: int (m2)
         district : str (category)
         status : str (category)
         rooms : int
         bathrooms : int
-        floor: int
         box_posto_auto : Bool(1,0)
-        garden_terrace : Bool(1,0)
-        Lift : Bool(1,0)
+        garden : Bool(1,0)
+        terrace : Bool(1,0)
         hasSwimmingPool : Bool(1,0)
 
         Returns
@@ -359,18 +381,24 @@ class Model():
         Prediction : Best Model Prediction
 
         """
-        #Logic FloorCat
-        if floor <= 1:
-            floorCat = 0
-        else:
-            floorCat = 1
+        file = 'model_params_rf.json'
         
-        #Logic LiftCat
-        if lift == 1 and floor >=2:
-            liftCat = 1
-        else:
-            liftCat = 0
-            
+        # Opening JSON file 
+        with open(file, 'r') as openfile: 
+      
+        # Reading from json file 
+            best_model_params = json.load(openfile) 
+        
+        """
+        #Avg Price Zone
+        avg_price_zone_df = self.dataset_preprocessed[['district','avgPriceZone']]
+
+        avg_price_zone_df = avg_price_zone_df.drop_duplicates()       
+        
+        avgPriceZone = avg_price_zone_df.loc[
+            avg_price_zone_df['district']==district]['avgPriceZone'].values[0]
+        """
+        
         #Rooms Logic
         if rooms >= 4:
             roomsCat = 4
@@ -384,54 +412,70 @@ class Model():
             bathroomsCat = bathrooms
 
         array = np.array([
-            propertyType,
             size,
-            district, 
-            status, 
+            propertyType,
+            district,
+            status,
             roomsCat,
             bathroomsCat,
-            floorCat,
             box_posto_auto,
-            garden_terrace,
-            liftCat,
-            swimming_pool
+            hasGarden,
+            hasTerrace,
+            hasSwimmingPool
                     ]).reshape(1,-1)
         
         
-        value = self.model_fit.predict(array)[0]
+        #Encoder    
+        encoder = ce.GLMMEncoder(cols=self.cat_index)
         
-        return int(math.floor(value / 5000.0) * 5000.0)
+        #Encoder CV KFold
+        cv_encoder = NestedCVWrapper(
+            encoder,
+            cv=5,shuffle=True, random_state=None)
+        
+        #Datasets
+        features = self.features_dataset
+        labels = self.labels_dataset
+        
+        #Apply Transform to all datasets
+        feat_tsf = cv_encoder.fit_transform(features,labels,array)
+        
+        #RF Regressor
+        rf = RandomForestRegressor(
+                          **best_model_params,
+                          random_state = 7
+                          )
+
+        #Fit & Metrics
+        rf.fit(feat_tsf[0],labels)
+        
+        #OOB Score
+        oob_score = (rf.oob_score_)*100
+        
+        print("OOB Score: %.2f" % oob_score)
+
+        #Prediction
+        prediction = rf.predict(feat_tsf[1])[0]
+
+        return prediction#int(math.floor(prediction / 5) * 5)
     
     @property
     def permutation_importance(self):
         """
         Permutation Features Importance 
         
+        Returns
+        -------
+        
+        Graph Permutation Importance
         """
         
-        model_fit = self.model_fit
-        
-        #Encoder
-        encoder = ce.GLMMEncoder(cols=self.cat_index)
-
-        #Shuffle & apply cat encoder
-        pipe = Pipeline(steps=[ 
-                ('shuffle',shuffle(random_state=7)),
-                ('catEncoder', encoder)
-                           ])
-        #Datasets
-        features = self.features_dataset
-        labels = self.labels_dataset
-                
-        #Apply piipe
-        features = pipe.fit_transform(features,labels)
-        
-        result = permutation_importance(model_fit, 
-                                        features,
-                                        labels, 
+        #Permutation importance
+        result = permutation_importance(self.model_fit['rf'], 
+                                        self.features_dataset,
+                                        self.labels_dataset, 
                                         n_repeats=10,
                                 random_state=7, n_jobs=2)
-        
         
         sorted_idx = result.importances_mean.argsort()
         fig, ax = plt.subplots()
@@ -519,4 +563,28 @@ class Model():
         print("Max depht: %i trees" % max(max_depth_list)) 
        
         return  pd.DataFrame(max_depth_list,columns=['trees'])
+    
+    def pred_ints(model, features_array, percentile=95):
+        
+        err_down = []
+        err_up = []
+        for x in range(len(features_array)):
+            preds = []
+            for pred in model.estimators_:
+                preds.append(pred.predict(features_array[x])[0])
+            err_down.append(np.percentile(preds, (100 - percentile) / 2. ))
+            err_up.append(np.percentile(preds, 100 - (100 - percentile) / 2.))
+        
+        return err_down, err_up
+    
+    def train_test_samples(self, features, labels, test_size=0.20,
+                           random_state=None):
+        
+        features  = self.features_dataset
+        labels = self.labels_dataset
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            features,labels, test_size = test_size, random_state = random_state)
+        
+        return X_train, X_test, y_train, y_test
 
