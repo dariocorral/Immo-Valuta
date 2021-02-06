@@ -126,5 +126,7 @@ dmypy.json
 
 #Joblib
 *.joblib
+
+#CSV Files
 *.csv
-*.csv
+
