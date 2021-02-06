@@ -20,11 +20,12 @@ pd.options.mode.chained_assignment = None
 
 import numpy as np
 #import streamlit as st
-import json
+from joblib import dump, load
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import GridSearchCV,train_test_split
+from sklearn.experimental import enable_halving_search_cv 
+from sklearn.model_selection import (train_test_split,
+                            HalvingRandomSearchCV)
 from sklearn.inspection import permutation_importance
-from sklearn.pipeline import Pipeline
 from sklearn import tree
 import category_encoders as ce
 from category_encoders.wrapper import NestedCVWrapper
@@ -60,7 +61,6 @@ class Model():
         
         return df
         
-
         
     def get_prepared_df(self):
        """
@@ -78,17 +78,8 @@ class Model():
        
        df = self.dataset_preprocessed
        
-              
-       #Bins
-       #bins_list = np.arange(300,3600,100).tolist()
-       bins_list = np.arange(25000,4500000,25000).tolist()
-
-       #bins_list.append(0)
-       #bins_list.append(int(math.ceil(df['priceByArea'].max() / 100.0) * 100.0))
-       #bins_list.sort()
-
-       #df["priceByAreaBins"] = pd.cut(df['priceByArea'],bins_list,labels = False)
-       df["priceBins"] = pd.cut(df['price'],bins_list,labels = False)
+                     
+       df['size']= df['size'].apply(lambda x: math.ceil(x / 5.0) * 5.0)
 
        
        #Property Type Union
@@ -130,6 +121,34 @@ class Model():
         features = np.array(features) 
         
         return features
+    
+    @property
+    def feat_tsf_dataset(self):
+        """
+        Returns
+        -------
+        Features Dataset Numpy Array with Category Encoders
+
+        """
+        features = self.features_dataset
+        labels = self.labels_dataset
+        
+        #Encoder
+        encoder = ce.GLMMEncoder(cols=self.cat_index)
+        
+
+        #Encoder Cv
+        cv_encoder = NestedCVWrapper(
+            feature_encoder= encoder,
+            cv=5,shuffle=True,random_state=7)
+        
+        
+        #Apply Transform to all datasets
+        feat_tsf = cv_encoder.fit_transform(features,labels)
+        
+        return feat_tsf
+
+    
     
     @property
     def features_list(self):
@@ -191,12 +210,12 @@ class Model():
         start = time.time()
         
         #Datasets
-        features = self.features_dataset
+        feat_tsf = self.feat_tsf_dataset
         labels = self.labels_dataset
                 
         #Generate random state
         #min_samples_split_values to test        
-        max_features_list = np.arange(0.33,0.55,0.02).tolist()
+        max_features_list = np.arange(0.20,0.66,0.01).tolist()
         max_features_list = [ round(elem, 2) for elem in max_features_list ]
             
         max_features_list.append('sqrt')
@@ -204,54 +223,36 @@ class Model():
         
         #Get max n_trees
         max_n_trees = self.depth_of_trees.max()[0]
-        max_depth_list = np.arange(int(max_n_trees/3),
+        max_depth_list = np.arange(int(max_n_trees/4),
                                    max_n_trees,
                                    1).tolist()
         max_depth_list.append(None)
         
-        #Min Sample leaf
-        min_samples_leaf_list = np.arange(0.01,0.36,0.01).tolist()
-        min_samples_leaf_list = [ round(elem, 2) for elem in min_samples_leaf_list ]
-        min_samples_leaf_list.append(None)
+        #min_impurity_decrease
+        min_impurity_decrease_list = np.arange(0.01,0.26,0.01).tolist()
+        min_impurity_decrease_list = [ round(elem, 2) for elem in min_impurity_decrease_list ]
         
-        
-        ccp_list = np.arange(0.001,0.036,0.001).tolist()
-        ccp_list = [ round(elem, 5) for elem in ccp_list ]
-
-        ccp_list = [0.001]
         #min_samples_leaf_list.append(None)
         
-        param_grid = {#"max_features":max_features_list,
-                      #"max_depth":max_depth_list,
-                      "min_impurity_decrease":min_samples_leaf_list}
+        param_grid = {"max_features":max_features_list,
+                      "max_depth":max_depth_list,
+                      "min_impurity_decrease":min_impurity_decrease_list}
         
         #RF Model to test
         rf = RandomForestRegressor(
                           bootstrap = True,
                           oob_score = True,
                           n_estimators = n_trees,
-                          max_depth=9,
-                          max_features = 0.33,
                           random_state=7)
-        
-        #Encoder
-        encoder = ce.GLMMEncoder(cols=self.cat_index)
-        
-
-        #Encoder Cv
-        cv_encoder = NestedCVWrapper(
-            feature_encoder= encoder,
-            cv=5,shuffle=True,random_state=7)
-        
-        
-        #Apply Transform to all datasets
-        feat_tsf = cv_encoder.fit_transform(features,labels)
         
         
         #Define and execute pipe        
-        grid_cv= GridSearchCV(rf,param_grid,verbose = 3)
+        grid_cv= HalvingRandomSearchCV(estimator=rf,
+                                     param_distributions=param_grid,
+                                     random_state=7,
+                                     max_resources='auto',
+                                     verbose = 3).fit(feat_tsf,labels)
                         
-        grid_cv.fit(feat_tsf,labels)
         
         df_results = pd.DataFrame(grid_cv.cv_results_)
         
@@ -261,24 +262,12 @@ class Model():
             df_results.to_csv('data/cv_hyperparams_model.csv')
                 
         
-        best_max_depth = (
-            df_results.loc[
-                df_results['rank_test_score']==1]['param_max_depth'].values[0])
-
-        model_params = {
-            "bootstrap":True,
-             "max_depth" : best_max_depth,
-             "max_features":0.33,
-             "oob_score": True,
-             "n_estimators" : n_trees
-            }
+        print ("Best Params:")    
+        print(grid_cv.best_params_)
         
-        # Serializing json  
-        json_object = json.dumps(model_params, indent = 2) 
-      
-        # Writing .json 
-        with open("model_params_rf.json", "w") as outfile: 
-            outfile.write(json_object)
+        print("Saving model in 'model_params.joblib'")
+        # Writing joblibfile with best model 
+        dump(grid_cv.best_estimator_, 'model_params.joblib')
         
         #End Time
         end = time.time()
@@ -295,44 +284,23 @@ class Model():
         Fit Best Params Model
 
         """
-        file = 'model_params_rf.json'
         
-        # Opening JSON file 
-        with open(file, 'r') as openfile: 
-      
-        # Reading from json file 
-            best_model_params = json.load(openfile) 
-        
-        #Encoder    
-        encoder = ce.GLMMEncoder(cols=self.cat_index)
-                
-        #Encoder Cv
-        cv_encoder = NestedCVWrapper(
-            feature_encoder= encoder,
-            cv=5,shuffle=True)
         
         #Datasets
-        features = self.features_dataset
+        feat_tsf = self.feat_tsf_dataset
         labels = self.labels_dataset
         
-        #Shuffle & apply cat encoder
-        pipe = Pipeline(steps=[ 
-                ('catEncoder', cv_encoder),
-                ('rf',RandomForestRegressor(
-                          **best_model_params,
-                          random_state = 7
-                          ))
-                ])
-
+        #Load Best Model
+        rf = load('model_params.joblib')        
         
         #Fit & Metrics
-        pipe.fit(features,labels)
+        rf.fit(feat_tsf,labels)
         
-        oob_score = (pipe['rf'].oob_score_)*100
+        oob_score = (rf.oob_score_)*100
         
         print("OOB Score: %.2f" % oob_score)
         
-        return pipe
+        return rf
     
     @property
     def oob_score(self):
@@ -343,7 +311,19 @@ class Model():
 
         """
         
-        return self.model_fit['rf'].oob_score_
+        return self.model_fit.oob_score_
+    
+    @property
+    def params(self):
+        """
+        Returns
+        -------
+        Best Model Params
+
+        """
+        
+        return self.model_fit.get_params()
+
     
     #@st.cache
     def fit_predict(self,
@@ -376,13 +356,6 @@ class Model():
         Prediction : Best Model Prediction
 
         """
-        file = 'model_params_rf.json'
-        
-        # Opening JSON file 
-        with open(file, 'r') as openfile: 
-      
-        # Reading from json file 
-            best_model_params = json.load(openfile) 
         
         """
         #Avg Price Zone
@@ -422,7 +395,6 @@ class Model():
             hasSwimmingPool
                     ]).reshape(1,-1)
         
-        
         #Encoder    
         encoder = ce.GLMMEncoder(cols=self.cat_index)
         
@@ -438,22 +410,8 @@ class Model():
         #Apply Transform to all datasets
         feat_tsf = cv_encoder.fit_transform(features,labels,array)
         
-        #RF Regressor
-        rf = RandomForestRegressor(
-                          **best_model_params,
-                          random_state = 7
-                          )
-
-        #Fit & Metrics
-        rf.fit(feat_tsf[0],labels)
-        
-        #OOB Score
-        oob_score = (rf.oob_score_)*100
-        
-        print("OOB Score: %.2f" % oob_score)
-
         #Prediction
-        prediction = rf.predict(feat_tsf[1])[0]
+        prediction = self.model_fit.predict(feat_tsf[1])[0]
 
         return prediction#int(math.floor(prediction / 5) * 5)
     
@@ -468,43 +426,13 @@ class Model():
         Graph Permutation Importance
         """
         
-        file = 'model_params_rf.json'
-        
-        # Opening JSON file 
-        with open(file, 'r') as openfile: 
-      
-        # Reading from json file 
-            best_model_params = json.load(openfile) 
-        
         #Datasets
-        features = self.features_dataset
+        feat_tsf = self.feat_tsf_dataset
         labels = self.labels_dataset
         
-        #Encoder    
-        encoder = ce.GLMMEncoder(cols=self.cat_index)
+        rf = load('model_params.joblib')        
         
-        #Encoder CV KFold
-        cv_encoder = NestedCVWrapper(
-            encoder,
-            cv=5,shuffle=True, random_state=None)
-        
-        #Datasets
-        features = self.features_dataset
-        labels = self.labels_dataset
-        
-        #Apply Transform to all datasets
-        feat_tsf = cv_encoder.fit_transform(features,labels)
 
-        #Encoder Cv
-        cv_encoder = NestedCVWrapper(
-            feature_encoder= encoder,
-            cv=5,shuffle=True)
-        
-        #RF Regressor
-        rf = RandomForestRegressor(
-                          **best_model_params,
-                          random_state = 7
-                          )
         #Fit
         rf.fit(feat_tsf,labels)
 
@@ -538,7 +466,7 @@ class Model():
         Tree Image
 
         """
-        model_rf = self.model_fit['rf']
+        model_rf = self.model_fit
         
         fig, axes = plt.subplots(nrows = 1,ncols = 1,figsize = (20,30), dpi=800)
         tree.plot_tree(model_rf.estimators_[tree_number],
@@ -560,7 +488,7 @@ class Model():
         """
         df = (
         pd.DataFrame({"ft":self.features_list,
-                      'imp':self.model_fit['rf'].feature_importances_}
+                      'imp':self.model_fit.feature_importances_}
                          ))
         
         df.sort_values(by='imp', ascending = False, inplace = True)
@@ -577,32 +505,12 @@ class Model():
 
         """
         
-        file = 'model_params_rf.json'
-        
-        # Opening JSON file 
-        with open(file, 'r') as openfile: 
-      
-        # Reading from json file 
-            best_model_params = json.load(openfile) 
 
-        #Rf without depth limit
-        rf = RandomForestRegressor(**best_model_params
-                          )
-        
-        #Encoder for categorical columns
-        encoder = ce.GLMMEncoder(cols=self.cat_index)
-        
-        #Pipeline
-        pipe = Pipeline(steps=[ 
-                ('catEncodder',encoder),
-                ('rf', rf)])
-
-        pipe.fit(self.features_dataset,self.labels_dataset)
         
         #Get depth of trees
         max_depth_list = []
         
-        for i in rf.estimators_:
+        for i in self.model_fit.estimators_:
             
             max_depth_list.append(i.get_depth())
             
@@ -613,24 +521,10 @@ class Model():
     def train_test_samples(self, features, labels, test_size=0.20,
                            random_state=None):
         
-        features  = self.features_dataset
+        feat_tsf  = self.feat_tsf_dataset
         labels = self.labels_dataset
         
-        #Encoder    
-        encoder = ce.GLMMEncoder(cols=self.cat_index)
-        
-        #Encoder CV KFold
-        cv_encoder = NestedCVWrapper(
-            encoder,
-            cv=5,shuffle=True, random_state=7)
-        
-        #Datasets
-        features = self.features_dataset
-        labels = self.labels_dataset
-        
-        #Apply Transform to all datasets
-        feat_tsf = cv_encoder.fit_transform(features,labels)
-        
+                
         X_train, X_test, y_train, y_test = train_test_split(
             feat_tsf,labels, test_size = test_size, random_state = random_state)
         
