@@ -439,6 +439,7 @@ class Model():
         
         df.sort_values(by='imp_mean', ascending = False, inplace = True)
         
+        
         sorted_idx = result.importances_mean.argsort()
         fig, ax = plt.subplots()
         ax.boxplot(result.importances[sorted_idx].T,
@@ -446,7 +447,7 @@ class Model():
         ax.set_title("Permutation Importances")
         fig.tight_layout()
         
-        return df,plt.show()
+        return plt.show()
         
     
     def plot_tree(self,tree_number = 0):

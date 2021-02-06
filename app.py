@@ -10,6 +10,7 @@ import math
 from model import Model
 
 
+
 def app_run():
     """
     Returns
@@ -65,7 +66,7 @@ def app_run():
     
     rooms = st.slider('Locali',
             min_value = 1,
-            max_value =  15,
+            max_value =  10,
             value = 3)
         
     #Conversiont to model variables
@@ -75,16 +76,13 @@ def app_run():
     else:
         roomsCat = rooms
 
-    
     #Bathrooms
     bathrooms = st.slider('Bagni',
-            min_value = 0,
+            min_value = 1,
             max_value = 10,
             value = 2
                           )
     #Conversiont to model variables
-    #bathroomsCat = __model.bathroomsCategory(bathrooms)
-    
     if bathrooms >= 2:
             bathroomsCat = 2
     else:
@@ -96,7 +94,6 @@ def app_run():
     status = st.radio('Stato',status_it, index = 1)
     
     #Conversiont to model variables
-   # status = __model.statusConverter(status)
     statusOutput = 'good'
 
     if status == "Da ristrutturare":
@@ -110,11 +107,9 @@ def app_run():
     elif status == "Nuova Costruzione":
     
         statusOutput = 'newdevelopment'
-
     #Extra Feautures
     #parkingBox = st.checkbox('Posto Auto - Box', value = 0)
         
-    
     #garden = st.checkbox('Giardino- Terrazzo', value = 0)
     
     #swimming_pool = st.checkbox('Piscina', value = 0)
@@ -135,7 +130,8 @@ def app_run():
     
         value = int(math.ceil((value_model ) / 5000.0) * 5000.0)
         
-        st.write("%i €" % value)
+        st.write("Valore di mercato")
+        st.write("{:,.0f}€".format(value))
     
 if __name__ == "__main__":
     
