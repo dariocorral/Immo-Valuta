@@ -19,7 +19,7 @@ import pandas as pd
 pd.options.mode.chained_assignment = None
 
 import numpy as np
-#import streamlit as st
+import streamlit as st
 from joblib import dump, load
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.experimental import enable_halving_search_cv 
@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 import time
 import math
 
-
+@st.cache(allow_output_mutation=True)
 class Model():
     """
     Model Class
@@ -89,9 +89,9 @@ class Model():
        
        #Select Features
        df = df[['price','size','propertyType', 'district',
-                            'status',
-                'roomsCat','bathroomsCat','box_posto_auto','hasTerrace',
-                'hasGarden','hasSwimmingPool']]
+                            'status','roomsCat',
+                'bathroomsCat']]#'box_posto_auto','hasTerrace',
+                #'hasGarden','hasSwimmingPool']],
        
        return df
     
@@ -276,7 +276,6 @@ class Model():
         return ('Time elapsed minutes: %1.f' % 
                     (time_elapsed))
     
-    #@st.cache
     def fit(self):
         """
         Returns
@@ -324,19 +323,17 @@ class Model():
         
         return self.model_fit.get_params()
 
-    
-    #@st.cache
-    def fit_predict(self,
+    def predict(self,
             size,
             propertyType,
             district,
             status,
             rooms, 
             bathrooms,
-            box_posto_auto,
-            hasGarden,
-            hasTerrace,
-            hasSwimmingPool
+            #box_posto_auto,
+            #hasGarden,
+            #hasTerrace,
+            #hasSwimmingPool
             ):
         """
         
@@ -367,21 +364,13 @@ class Model():
             avg_price_zone_df['district']==district]['avgPriceZone'].values[0]
         """
         
-        #Rooms Logic
-        if rooms >= 4:
-            roomsCat = 4
-        else:
-            roomsCat = rooms
+        #Rooms Category
+        roomsCat = self.roomsCategory(rooms)
             
-        #Rooms Logic
-        if bathrooms >= 2:
-            bathroomsCat = 2
-        else:
-            bathroomsCat = bathrooms
-            
-        #Avg Price Zone
-        #avgPriceZone = self.avg_price_district(district)
-
+        #Bathrooms Logic
+        bathroomsCat = self.bathroomsCategory(bathrooms)
+        
+        #Array for prediction
         array = np.array([
             size,
             propertyType,
@@ -389,10 +378,10 @@ class Model():
             status,
             roomsCat,
             bathroomsCat,
-            box_posto_auto,
-            hasGarden,
-            hasTerrace,
-            hasSwimmingPool
+            #box_posto_auto,
+            #hasGarden,
+            #hasTerrace,
+            #hasSwimmingPool
                     ]).reshape(1,-1)
         
         #Encoder    
@@ -413,7 +402,7 @@ class Model():
         #Prediction
         prediction = self.model_fit.predict(feat_tsf[1])[0]
 
-        return prediction#int(math.floor(prediction / 5) * 5)
+        return prediction
     
     @property
     def permutation_importance(self):
@@ -432,16 +421,23 @@ class Model():
         
         rf = load('model_params.joblib')        
         
-
         #Fit
         rf.fit(feat_tsf,labels)
 
         #Permutation importance
         result = permutation_importance(rf, 
                                         feat_tsf,
-                                        self.labels_dataset, 
+                                        labels, 
                                         n_repeats=10,
                                 random_state=7, n_jobs=2)
+        
+        df = (
+        pd.DataFrame({"ft":self.features_list,
+                      'imp_mean':result.importances_mean,
+                     'imp_dsvt':result.importances_std}
+                         ))
+        
+        df.sort_values(by='imp_mean', ascending = False, inplace = True)
         
         sorted_idx = result.importances_mean.argsort()
         fig, ax = plt.subplots()
@@ -450,13 +446,11 @@ class Model():
         ax.set_title("Permutation Importances")
         fig.tight_layout()
         
-        return plt.show()
+        return df,plt.show()
         
     
     def plot_tree(self,tree_number = 0):
         """
-        
-
         Parameters
         ----------
         number : Int. Tree to plot. The default is 0.
@@ -504,9 +498,7 @@ class Model():
         Dataframe with Trees depth
 
         """
-        
 
-        
         #Get depth of trees
         max_depth_list = []
         
@@ -537,7 +529,140 @@ class Model():
         df = df.groupby('district').mean()['priceByArea']
         
         return int(df.loc[df.index==district].values[0])
-        
     
+    @property
+    def propertyTypeList(self):
         
+        propertyTypelist = ['Appartamento', 'Attico',
+                    'Villa', 'Casa Rustica']
+    
+        return propertyTypelist
+    
+    def propertyTypeConverter(self,propertyType):
+        """
+        Parameters
+        ----------
+        propertyType : Str  Selected Property Type.
+    
+        Returns
+        -------
+        Property Type str
+    
+        """
+        #Options list
+        propertyTypelist = self.propertyTypeList
+        
+        #Lower elements list
+        propertyTypelist = [i.lower() for i in propertyTypelist]
+        
+        #Assertion
+        assert propertyType.lower() in propertyTypelist
+        
+        #Default Value
+        propertyTypeOutput = 'flat'
+        
+        if propertyType.lower() == 'appartamento':
+        
+            propertyTypeOutput = 'flat'
+        
+        elif propertyType.lower() == 'attico':
+        
+            propertyTypeOutput = 'penthouse'
+    
+        elif propertyType.lower() == 'villa':
+        
+            propertyTypeOutput = 'chalet'
+        
+        elif propertyType.lower() == 'casa rustica':
+        
+            propertyTypeOutput = 'countryHouse'
+    
+        return propertyTypeOutput
 
+    @property
+    def statusList(self):
+        
+        status_it = ['Da ristrutturare','Buono',
+                      'Nuova Costruzione']
+
+        return status_it
+
+    def statusConverter(self,status):
+        """
+        Parameters
+        ----------
+        status : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        #Options list
+        statusList = self.statusList
+        
+        #Lower elements list
+        statusList = [i.lower() for i in statusList]
+        
+        #Assertion
+        assert status.lower() in statusList
+        
+        #Default Value
+        statusOutput = 'renew'
+        
+        #Mapping status
+        if status.lower() == 'Da ristrutturare':
+            
+            statusOutput = 'renew'
+            
+        elif status.lower() == 'Buono':
+            
+            statusOutput = 'good'
+            
+        elif status.lower() == 'Nuova Costruzione':
+        
+            statusOutput = 'newdevelopment'
+            
+        return statusOutput
+    
+    def roomsCategory(self,rooms):
+        """
+        Parameters
+        ----------
+        rooms : Int
+            Rooms.
+
+        Returns
+        -------
+        Rooms Category.
+
+        """
+        
+        #Rooms Logic
+        if rooms >= 4:
+            roomsCat = 4
+        else:
+            roomsCat = rooms
+            
+        return roomsCat
+
+    def bathroomsCategory(self,bathrooms):
+        """
+        Parameters
+        ----------
+        rooms : Int
+            Bathrooms.
+
+        Returns
+        -------
+        Bathrooms Category.
+
+        """
+        
+        if bathrooms >= 2:
+            bathroomsCat = 2
+        else:
+            bathroomsCat = bathrooms
+        
+        return bathroomsCat
