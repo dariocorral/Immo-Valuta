@@ -587,5 +587,47 @@ class Model():
                       'Nuova Costruzione']
 
         return status_it
+    
+    def roomsCategory(self,rooms):
+        """
+        Parameters
+        ----------
+        rooms : Int
+            Rooms
 
+        Returns
+        -------
+        Rooms Category
 
+        """
+        
+        roomsCat = 1
+        
+        if rooms >= 4:
+            roomsCat = 4
+        else:
+            roomsCat = rooms
+            
+        return roomsCat
+
+    def bathroomsCategory(self,bathrooms):
+        """
+        Parameters
+        ----------
+        bathrooms : Int
+            bathRooms
+
+        Returns
+        -------
+        Barthooms Category
+
+        """
+        
+        bathroomsCat = 1
+        
+        if bathrooms >= 2:
+                bathroomsCat = 2
+        else:
+            bathroomsCat = bathrooms
+
+        return bathroomsCat

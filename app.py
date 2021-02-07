@@ -151,7 +151,7 @@ def app_run():
         
         if parking_space > 0:
             
-            st.write("Prezzo medio Posto auto di Varese - %s è " % district)
+            st.write("Prezzo medio Posto auto di Varese - %s " % district)
             st.write("{:,.0f}€".format(parking_space))
         
         
