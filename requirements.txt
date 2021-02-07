@@ -1,1 +1,6 @@
+#Requirements
+joblib
+pandas
+scikit-learn==0.24.1
+category-encoders
 streamlit
