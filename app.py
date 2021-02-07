@@ -30,11 +30,16 @@ def app_run():
     #Dataset & zones
     df = __model.dataset_preprocessed
     
+    #Parking Space Price
+    parking_price_df =(
+        df.loc[df['parkingSpacePrice']>10000].
+            groupby('district').mean()['parkingSpacePrice'])
+    
     #Title & Header Image
     st.title('Valuta la tua casa a Varese')
     
     st.subheader("Scopri il valore di mercato della tua casa "
-             "secondo i siti web piú importanti.")
+             "comodo e facile con un click")
     
     st.image('./data/Header Varese.jpg',use_column_width=True)
     
@@ -113,6 +118,17 @@ def app_run():
     #garden = st.checkbox('Giardino- Terrazzo', value = 0)
     
     #swimming_pool = st.checkbox('Piscina', value = 0)
+    
+    #Parking Space District Selected
+    
+    try:
+    
+        parking_space = int(
+            parking_price_df.loc[parking_price_df.index==district].values[0])
+        
+    except:
+        
+        parking_space = 0
             
     #Button to value    
     button = st.button('Valuta')
@@ -132,6 +148,14 @@ def app_run():
         
         st.write("Valore di mercato")
         st.write("{:,.0f}€".format(value))
+        
+        if parking_space > 0:
+            
+            st.write("Prezzo medio Posto auto di Varese - %s è " % district)
+            st.write("{:,.0f}€".format(parking_space))
+        
+        
+        
     
 if __name__ == "__main__":
     
