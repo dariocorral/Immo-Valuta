@@ -21,6 +21,7 @@ pd.options.mode.chained_assignment = None
 import numpy as np
 import streamlit as st
 from joblib import dump, load
+import json
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.experimental import enable_halving_search_cv 
 from sklearn.model_selection import (train_test_split,
@@ -289,8 +290,13 @@ class Model():
         feat_tsf = self.feat_tsf_dataset
         labels = self.labels_dataset
         
-        #Load Best Model
-        rf = load('model_params.joblib')        
+        
+        #Open params
+        with open('model_params', 'r') as file:
+            params_model = json.load(file)
+            
+        #Model
+        rf = RandomForestRegressor(**params_model)       
         
         #Fit & Metrics
         rf.fit(feat_tsf,labels)
