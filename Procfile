@@ -1,2 +1,1 @@
-release: python3 manage.py migrate
-web: gunicorn gettingstarted.wsgi --preload --log-file -
+web: sh setup.sh && streamlit run [name-of-app].py
