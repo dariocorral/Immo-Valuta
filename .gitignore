@@ -136,9 +136,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-#Joblib
-*.joblib
-
 #CSV Files
 *.csv
 
