@@ -137,7 +137,7 @@ dmypy.json
 .pyre/
 
 #CSV Files
-#*.csv
+*.csv
 
 data/cv_hyperparams_model.csv
 .DS_Store
