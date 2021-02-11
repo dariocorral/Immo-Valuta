@@ -91,8 +91,8 @@ class Model():
        #Select Features
        df = df[['price','size','propertyType', 'district',
                             'status','roomsCat',
-                'bathroomsCat']]#'box_posto_auto','hasTerrace',
-                #'hasGarden','hasSwimmingPool']],
+                'bathroomsCat']]#,'box_posto_auto','hasTerrace',
+                #'hasGarden','hasSwimmingPool']]
        
        return df
     
@@ -269,6 +269,11 @@ class Model():
         print("Saving model in 'model_params.joblib'")
         # Writing joblibfile with best model 
         dump(grid_cv.best_estimator_, 'model_params.joblib')
+        
+        #Save json file with params best model
+        json_txt = json.dumps(grid_cv.best_params_, indent=4)
+        with open('model_params', 'w') as file:
+            file.write(json_txt)
         
         #End Time
         end = time.time()
@@ -509,7 +514,14 @@ class Model():
         #Get depth of trees
         max_depth_list = []
         
-        for i in self.model_fit.estimators_:
+        rf = RandomForestRegressor(n_estimators=2500,max_features=0.35)
+        
+        feat_tsf  = self.feat_tsf_dataset
+        labels = self.labels_dataset
+
+        rf.fit(feat_tsf,labels)
+        
+        for i in rf.estimators_:
             
             max_depth_list.append(i.get_depth())
             

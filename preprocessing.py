@@ -33,17 +33,18 @@ class Preprocessing(object):
         """
     
         #Datasets Varese houses Test
-        df = pd.read_csv("data/varese_houses.csv")
-        """
+        df_varese = pd.read_csv("data/varese_houses.csv")
+        
+        
         df_varese['district'] = 'VA - ' + df_varese['district']
         
-        df_milano = pd.read_csv("data/milano_houses.csv")
+        df_monza = pd.read_csv("data/monza_houses.csv")
         
-        df_milano ['district'] = 'MI - ' + df_milano['district']
+        df_monza ['district'] = 'MO - ' + df_monza['district']
         
         #Df total
-        df = df_varese.append(df_milano)
-        """
+        df = df_varese.append(df_monza)
+        
         #Drop first column
         df.drop('Unnamed: 0',axis = 1,inplace=True)
         

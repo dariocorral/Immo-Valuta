@@ -36,21 +36,37 @@ def app_run():
             groupby('district').mean()['parkingSpacePrice'])
     
     #Title & Header Image
-    st.title('Valuta la tua casa a Varese')
+    st.title('Valuta la tua casa a Varese-Monza')
     
     st.subheader("Scopri il valore di mercato della tua casa "
              "comodo e facile con un click")
     
     st.image('./data/Header Varese.jpg',use_column_width=True)
     
-    st.subheader ("Usiamo un algoritmo di Machine Learning su %s immobili a Varese"
+    st.subheader ("Usiamo un algoritmo di Machine Learning su %s immobili"
          % len(df))
     
     #Parameters
     st.subheader("Imposta i parametri dell'immobile")
     
+    #City
+    city = st.selectbox('City',['Monza','Varese'],index = 0)
+    
+    selector_city = 'MO -'
+    
+    if city == 'Monza':
+        selector_city = 'MO -'
+        
+    else:
+        selector_city = 'VA -'
+    
     #Zone
-    zonesList = df['district'].unique().tolist()
+    zonesList = (
+        df.loc[df['district'].str.startswith (selector_city)]['district'].unique().tolist()
+        )
+    
+    #Replace prefix
+    zonesList = [i.replace(selector_city,'') for i in zonesList]
     
     district = st.selectbox('Zona', zonesList, index = 0)
     
