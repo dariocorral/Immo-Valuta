@@ -32,7 +32,7 @@ def app_run():
     
     #Parking Space Price
     parking_price_df =(
-        df.loc[df['parkingSpacePrice']>10000].
+        df.loc[df['parkingSpacePrice']>1000].
             groupby('district').mean()['parkingSpacePrice'])
     
     #Title & Header Image
@@ -52,13 +52,13 @@ def app_run():
     #City
     city = st.selectbox('City',['Monza','Varese'],index = 0)
     
-    selector_city = 'MO -'
+    selector_city = 'MO - '
     
     if city == 'Monza':
-        selector_city = 'MO -'
+        selector_city = 'MO - '
         
     else:
-        selector_city = 'VA -'
+        selector_city = 'VA - '
     
     #Zone
     zonesList = (
@@ -140,7 +140,9 @@ def app_run():
     try:
     
         parking_space = int(
-            parking_price_df.loc[parking_price_df.index==district].values[0])
+            parking_price_df.loc[parking_price_df.index==
+                                 
+                                 (selector_city+district)].values[0])
         
     except:
         
@@ -154,7 +156,7 @@ def app_run():
         value_model = __model.predict( 
             size,
             propertyType,
-            district,
+            (selector_city+district),
             statusOutput,
             roomsCat,
             bathroomsCat,
@@ -167,7 +169,7 @@ def app_run():
         
         if parking_space > 0:
             
-            st.write("Prezzo medio Posto auto di Varese - %s " % district)
+            st.write("Prezzo medio Posto auto di %s - %s " % (city,district))
             st.write("{:,.0f}€".format(parking_space))
         
         
